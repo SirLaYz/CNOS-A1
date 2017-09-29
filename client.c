@@ -14,8 +14,6 @@ void error(const char *msg)
     exit(0);
 }
 
-
-
 int main(int argc, char *argv[])
 {
     int sockfd, portno, n, event;
@@ -24,7 +22,6 @@ int main(int argc, char *argv[])
     struct pollfd fds[0];
     char buffer[256];
     
-
     if (argc < 3) {
        fprintf(stderr,"usage %s hostname port\n", argv[0]);
        exit(0);
