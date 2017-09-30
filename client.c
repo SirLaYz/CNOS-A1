@@ -80,8 +80,51 @@ you will also need to check for duplication of messages and the order of each me
 // Acknowledgment Number
 // TCP checksum
 unsigned int messageNO = 0;
-int ack;
+//int ack = 0;
 
+struct message_header {;
+    int ack;
+    int chsum;
+};
+
+struct message_header header;
+
+//send(sockfd, &header, sizeof(header), 0);
+
+//Required for the checksum calculation
+struct pseudo_header
+{
+    u_int32_t source_address;
+    u_int32_t destination_address;
+    u_int8_t temp;
+    u_int8_t protocol;
+    u_int16_t tcp_length;
+};
+
+//Checksum generation calculation I found
+unsigned short csum(unsigned short *ptr,int nbytes)
+{
+    register long total;
+    unsigned short oddbyte;
+    register short checksum;
+    
+    total=0;
+    while(nbytes>1) {
+        total += *ptr++;
+        nbytes -= 2;
+    }
+    if (nbytes == 1) {
+        oddbyte = 0;
+        *((u_char*) & oddbyte) =* (u_char*)ptr;
+        total += oddbyte;
+    }
+    
+    total = (total>>16)+(total & 0xffff);
+    total = total + (total>16);
+    checksum = (short) ~ total;
+    
+    return checksum;
+}
 
 while(1)
 {
