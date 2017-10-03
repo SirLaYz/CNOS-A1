@@ -14,6 +14,17 @@ void error(const char *msg)
     exit(0);
 }
 
+// www.stackoverflow.com/questions/846006/how-do-i-concatenate-two-strings-in-c
+char* concat(const char *s1, const char *s2){
+char *result = malloc(strlen(s1)+strlen(s2)+3); //+1 for null terminator +2 for :
+strcpy(result, s1);
+strcat(result, ":");
+strcat(result, s2);
+return result;
+}
+
+
+
 int main(int argc, char *argv[])
 {
     int sockfd, portno, n, event;
@@ -21,7 +32,8 @@ int main(int argc, char *argv[])
     struct hostent *server;
     struct pollfd fds[0];
     char buffer[256];
-    
+
+
     if (argc < 3) {
        fprintf(stderr,"usage %s hostname port\n", argv[0]);
        exit(0);
@@ -62,7 +74,7 @@ while(1){
 
 
 
-
+//http://beej.us/guide/bgnet/output/html/multipage/pollman.html
 fds[0].fd = sockfd;
 fds[0].events = POLLIN;
 
@@ -73,99 +85,64 @@ fds[1].events = POLLIN;
 after each character+checksum is recieved and is uncorrupted convert it back into a character and add it to its proper buffer e.g header file buffer or message buffer starting with location [0]  
 you will also need to check for duplication of messages and the order of each message*/
 
-// 11111111111111111 17bits sequence number : 
-
 // Data offset e.g headersize
 // Sequence Number
 // Acknowledgment Number
 // TCP checksum
-unsigned int messageNO = 0;
-//int ack = 0;
 
-struct message_header {;
-    int ack;
-    int chsum;
-};
 
-struct message_header header;
 
-//send(sockfd, &header, sizeof(header), 0);
+int headersize = 55;
+char *cmessageNO = "0";
+int messageNO = atoi(cmessageNO);
+char *cAck = "1";
+int Ack = atoi(cAck);
+char *header;
+char *buff;
 
-//Required for the checksum calculation
-struct pseudo_header
-{
-    u_int32_t source_address;
-    u_int32_t destination_address;
-    u_int8_t temp;
-    u_int8_t protocol;
-    u_int16_t tcp_length;
-};
-
-//Checksum generation calculation I found
-unsigned short csum(unsigned short *ptr,int nbytes)
-{
-    register long total;
-    unsigned short oddbyte;
-    register short checksum;
-    
-    total=0;
-    while(nbytes>1) {
-        total += *ptr++;
-        nbytes -= 2;
-    }
-    if (nbytes == 1) {
-        oddbyte = 0;
-        *((u_char*) & oddbyte) =* (u_char*)ptr;
-        total += oddbyte;
-    }
-    
-    total = (total>>16)+(total & 0xffff);
-    total = total + (total>16);
-    checksum = (short) ~ total;
-    
-    return checksum;
-}
 
 while(1)
 {
-	
 	event = poll(fds, 2, -1);
-
 // message recieved side
 	if (fds[0].revents & POLLIN)
 	{
 		bzero(buffer,256);
-		n = read(sockfd, buffer, 256);
-		messageNO++;
+		n = read(sockfd,buffer,256);
+			
+			if(buffer[0] != '\0'){ // stops segmentation error when using output
+			//unpack message to read
+			cmessageNO = strtok(buffer,":");
+				cAck = strtok(NULL,":");
+				buff = strtok(NULL,"\0");
+				}
+	      
+
 
 // Read Esc and the program will exit before printing the message
-          if (buffer[0] == 'E' && buffer[1] == 's' && buffer[2] == 'c')
-          {
-           close(sockfd);
-           return 0;
-          }
-
-
-		printf("%s", buffer);
-    		
+          if (buff[0] == 'E' && buff[1] == 's' && buff[2] == 'c'){close(sockfd);return 0;}
+		
+		//sprintf(buff,"message number %d ",messageNO);
+		printf("%s", buff);	
+		
+		messageNO++;
 	}
-
 
 // message sent side
 	if (fds[1].revents & POLLIN)
 	{
 		bzero(buffer, 256);
 		fgets(buffer, 255, stdin);
-		n = write(sockfd, buffer, strlen(buffer));
-		messageNO++;
-		
+	
+	if(buffer[0] != '\0'){ //stops segmentation error when using input
+		//pack message to send
+ 		header = concat(cmessageNO,cAck);
+		buff = concat(header,buffer);
+		n = write(sockfd, buff, strlen(buff));
+	}
+
 // Send Esc and the program will exit after sending the message		
-          if (buffer[0] == 'E' && buffer[1] == 's' && buffer[2] == 'c')
-          {
-           close(sockfd);
-           return 0;
-          }
-		
+          if (buffer[0] == 'E' && buffer[1] == 's' && buffer[2] == 'c'){close(sockfd);return 0;}
 	}
 }
 
