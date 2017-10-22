@@ -7,6 +7,8 @@
 #include <netinet/in.h>
 #include <netdb.h> 
 #include <poll.h>
+#include <time.h>
+
 
 void error(const char *msg)
 {
@@ -14,15 +16,30 @@ void error(const char *msg)
     exit(0);
 }
 
+
+
 // www.stackoverflow.com/questions/846006/how-do-i-concatenate-two-strings-in-c
 char* concat(const char *s1, const char *s2){
-char *result = malloc(strlen(s1)+strlen(s2)+3); //+1 for null terminator +2 for :
+char *result = malloc(strlen(s1)+strlen(s2)+2); //+1 for null terminator +2 for :
 strcpy(result, s1);
 strcat(result, ":");
 strcat(result, s2);
 return result;
 }
 
+//http://www.geeksforgeeks.org/time-delay-c/
+void delay(int number_of_seconds)
+{
+    // Converting time into milli_seconds
+    int milli_seconds = 1000 * number_of_seconds;
+
+    // Stroing start time
+    clock_t start_time = clock();
+
+    // looping till required time is not acheived
+    while (clock() < start_time + milli_seconds)
+;
+}
 
 
 int main(int argc, char *argv[])
@@ -32,7 +49,20 @@ int main(int argc, char *argv[])
     struct hostent *server;
     struct pollfd fds[0];
     char buffer[256];
+    char abuffer[256];
 
+    char *cmessageNO = "0";
+    int messageNO = atoi(cmessageNO);
+    char *cAck = "0";
+    int Ack = atoi(cAck);
+    int tempmsgNO = 0;
+    char *header;
+    char *buff;
+    const char buff_Ack[6] = "Ack\n";
+    //bool values
+    int discard = 0;
+    int Ackbool = 0;
+    int repeating = 1;
 
     if (argc < 3) {
        fprintf(stderr,"usage %s hostname port\n", argv[0]);
@@ -55,23 +85,6 @@ int main(int argc, char *argv[])
     serv_addr.sin_port = htons(portno);
     if (connect(sockfd,(struct sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) 
         error("ERROR connecting");
-/*
-while(1){
-    printf("Please enter the message: ");
-    bzero(buffer,256);
-    fgets(buffer,255,stdin);
-    n = write(sockfd,buffer,strlen(buffer));
-    if (n < 0) 
-         error("ERROR writing to socket");
-    bzero(buffer,256);
-    n = read(sockfd,buffer,255);
-    if (n < 0) 
-         error("ERROR reading from socket");
-    printf("%s\n",buffer);
-}
-
-*/
-
 
 
 //http://beej.us/guide/bgnet/output/html/multipage/pollman.html
@@ -81,69 +94,110 @@ fds[0].events = POLLIN;
 fds[1].fd = 0;
 fds[1].events = POLLIN;
 
-/* Break down the header+message string into characters, convert each character into binary and create a checksum for it. send the character+checksum binary wait for ack, send next character+checksum.
-after each character+checksum is recieved and is uncorrupted convert it back into a character and add it to its proper buffer e.g header file buffer or message buffer starting with location [0]  
-you will also need to check for duplication of messages and the order of each message*/
-
-// Data offset e.g headersize
-// Sequence Number
-// Acknowledgment Number
-// TCP checksum
-
-
-
-int headersize = 55;
-char *cmessageNO = "0";
-int messageNO = atoi(cmessageNO);
-char *cAck = "1";
-int Ack = atoi(cAck);
-char *header;
-char *buff;
-
 
 while(1)
 {
 	event = poll(fds, 2, -1);
-// message recieved side
+
+	// message recieving side
 	if (fds[0].revents & POLLIN)
 	{
 		bzero(buffer,256);
-		n = read(sockfd,buffer,256);
-			
-			if(buffer[0] != '\0'){ // stops segmentation error when using output
-			//unpack message to read
-			cmessageNO = strtok(buffer,":");
-				cAck = strtok(NULL,":");
-				buff = strtok(NULL,"\0");
+		bzero(buff,strlen(buff));
+		read(sockfd,buffer,256);
+
+		//if message recieved is an Ack, set Ackbool to true
+		if (buffer[0] == 'A' && buffer[1] == 'c' && buffer[2] == 'k'){Ackbool = 1;}
+		
+		//if buffer is not null and message is not an Ack
+		if(buffer[0] != '\0' && Ackbool == 0){ 
+		tempmsgNO = messageNO;
+
+		//unpack message
+		cmessageNO = strtok(buffer,":");
+		cAck = strtok(NULL,":");
+		buff = strtok(NULL,"\0");
+
+		//update int value with recieved char values
+		messageNO = atoi(cmessageNO);
+		Ack = atoi(cAck);
+
+		//if message is a duplicate, set discard to true
+		if(tempmsgNO != messageNO-1){discard = 1;}
+			}
+
+		//If Ack is received and passes as valid, update Ack count
+		if(Ackbool == 1 && messageNO-1 == Ack){Ack++;}
+
+		// If message is not an Ack and it is the next message in sequence, reply with an Ack.
+		if(Ackbool == 0 && messageNO-1 == Ack){
+			Ack = messageNO;
+			send(sockfd, buff_Ack, strlen(buff_Ack),0);
 				}
-	      
 
+		// If the message passes all tests print it to file
+		if(messageNO == Ack && Ackbool == 0 && discard == 0){
+		 fprintf(stdout,"%s", buff);
+			fflush(stdout);
+		}
+			//reset bool values and clear buffers
+			Ackbool = 0;
+			discard = 0;
+			bzero(buffer,256);
+			bzero(buff,strlen(buff));
 
-// Read Esc and the program will exit before printing the message
-          if (buff[0] == 'E' && buff[1] == 's' && buff[2] == 'c'){close(sockfd);return 0;}
+			//exit reciever
+		}
 		
-		//sprintf(buff,"message number %d ",messageNO);
-		printf("%s", buff);	
 		
-		messageNO++;
-	}
+		
+	
 
-// message sent side
+// message sending side
 	if (fds[1].revents & POLLIN)
 	{
 		bzero(buffer, 256);
+		bzero(buff,strlen(buff));
 		fgets(buffer, 255, stdin);
-	
-	if(buffer[0] != '\0'){ //stops segmentation error when using input
-		//pack message to send
- 		header = concat(cmessageNO,cAck);
+		
+		
+	if(buffer[0] != '\0'){ //stops segmentation error when using input command
+
+		messageNO++;
+		
+		//store int values as char 
+		cAck = malloc(16);
+		cmessageNO = malloc(16);
+		snprintf(cAck, 16, "%d", Ack);
+		snprintf(cmessageNO, 16, "%d", messageNO);
+
+		//Pack message
+ 		header = concat(cmessageNO,cAck); 
 		buff = concat(header,buffer);
-		n = write(sockfd, buff, strlen(buff));
+
+		//wait for ack before exiting loop 
+ 	while(repeating == 1){
+
+		write(sockfd, buff, strlen(buff));
+		//delay to stop messages being sent too quickly and causing read errors
+		delay(25);
+
+		//use seperate buffer 'abuffer' to look for ack otherwise code just gets stuck in loop
+		bzero(abuffer,256);
+		recv(sockfd,abuffer,256,MSG_DONTWAIT);
+		if (abuffer[0] == 'A' && abuffer[1] == 'c' && abuffer[2] == 'k'){Ackbool = 1;repeating = 0;}
+		//update ack if ack is recieved
+		if(Ackbool == 1 && messageNO-1 == Ack){Ack++;}
+			}
+
+		//reset bool values
+		Ackbool = 0;
+		repeating = 1;
+		
+		}
+	//exit sender side
 	}
 
-// Send Esc and the program will exit after sending the message		
-          if (buffer[0] == 'E' && buffer[1] == 's' && buffer[2] == 'c'){close(sockfd);return 0;}
-	}
 }
 
 //couldnt shouldnt get here 
@@ -151,34 +205,6 @@ while(1)
     return 0;
 }
 
-
-/*
-fds[0].fd = sockfd;
-fds[0].events = POLLIN;
-
-fds[1].fd = 0;
-fds[1].events = POLLIN;
-
-while(1)
-{
-	event = poll(fds, 2, -1);
-
-
-	if (fds[0].revents & POLLIN)
-	{
-		bzero(in_buffer,256);
-		recv(sockfd, in_buffer, 256, 0);
-		printf("%s", in_buffer);
-	}
-
-	if (fds[1].revents & POLLIN)
-	{
-		bzero(out_buffer, 256);
-		fgets(out_buffer, 255, stdin);
-		send(sockfd, out_buffer, strlen(out_buffer),0);
-	}
-}
-*/
 
 
 
